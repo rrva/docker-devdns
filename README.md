@@ -12,8 +12,8 @@ the docker daemon directly, which hopefully makes it more robust.
 
 See etcd/skydns for a more complete solution. 
 
-Names, unlike skydock/progrium-registrator are short: it's $CONTAINER_NAME.dev
-if a container name contains dots that will form subdomains.
+Names, unlike skydock/progrium-registrator are short: it's $CONTAINER_NAME.dev.
+If a container name contains dots that will form subdomains.
 
 # Design
 
@@ -46,7 +46,7 @@ use a dns server which can selectively forward
 requests for the .dev domain to this server. For example
 dnsmasq.
  
-for container-to-contaner resolving, add the following to your docker 
+for container-to-container resolving, add the following to your docker 
 daemon options:
 
     --dns <listen addr of docker-devdns> --dns-search dev
