@@ -161,7 +161,7 @@ func localLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 func writeNameResponse(m *dns.Msg, ip string, name *string) {
 	rr := new(dns.PTR)
 	str := *name + "." + domain + "."
-	rr.Hdr = dns.RR_Header{Name: str, Rrtype: dns.TypePTR, Class: dns.ClassINET, Ttl: 1}
+	rr.Hdr = dns.RR_Header{Name: ip, Rrtype: dns.TypePTR, Class: dns.ClassINET, Ttl: 1}
 	rr.Ptr = str
 	m.Answer = append(m.Answer, rr)
 }
@@ -206,8 +206,6 @@ func reverseLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 		}
 
 		name, err := lookupWithTimeout(s, 1*time.Second, findContainerNameByIPAddress)
-
-		log.Printf("Reverse lookup %s=%s", s, *name)
 
 		if err != nil {
 			log.Printf("Container lookup error: %s", err)
@@ -323,7 +321,7 @@ func main() {
 
 	defaultDockerHost := os.Getenv("DOCKER_HOST")
 	if defaultDockerHost == "" {
-		defaultDockerHost = "unix:///var/run/docker.sock"
+		defaultDockerHost = "tcp://docker:2375"
 	}
 	var dockerHost = *flag.String("docker-host", defaultDockerHost, "docker host url, or set DOCKER_HOST")
 	var listenAddr = flag.String("listen-addr", ":53", "Listen address for DNS")
