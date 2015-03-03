@@ -144,6 +144,7 @@ func localLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 
 			if err != nil {
 				log.Printf("Local lookup error: %s", err)
+				m.SetRcode(req, dns.RcodeServerFailure)
 				writeDNSResponse(w, m)
 				return
 			}
@@ -184,6 +185,19 @@ func writeIPAddressResponse(IPAddress *string, m *dns.Msg, name string, qtype ui
 	}
 }
 
+func inAddrArpaToIpAddress(n string) string {
+	ips := strings.Split(strings.Replace(n, ".in-addr.arpa.", "", 1), ".")
+	s := ""
+	last := len(ips)
+	for i := range ips {
+		s = s + ips[last-1-i]
+		if i < last-1 {
+			s = s + "."
+		}
+	}
+	return s
+}
+
 func reverseLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(req)
@@ -194,21 +208,13 @@ func reverseLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 			continue
 		}
 
-		ips := strings.Split(strings.Replace(question.Name, ".in-addr.arpa.", "", 1), ".")
+		ip := inAddrArpaToIpAddress(question.Name)
 
-		s := ""
-		last := len(ips)
-		for i := range ips {
-			s = s + ips[last-1-i]
-			if i < last-1 {
-				s = s + "."
-			}
-		}
-
-		name, err := lookupWithTimeout(s, 1*time.Second, findContainerNameByIPAddress)
+		name, err := lookupWithTimeout(ip, 1*time.Second, findContainerNameByIPAddress)
 
 		if err != nil {
 			log.Printf("Container lookup error: %s", err)
+			m.SetRcode(req, dns.RcodeServerFailure)
 			writeDNSResponse(w, m)
 			return
 		}
@@ -216,6 +222,7 @@ func reverseLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 		if name != nil {
 			writeNameResponse(m, question.Name, name)
 		} else {
+			m.SetRcode(req, dns.RcodeRefused)
 			log.Printf("No match found for %s sending empty reply", question.Name)
 		}
 	}
@@ -238,6 +245,8 @@ func dockerNameLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 
 		if err != nil {
 			log.Printf("Container lookup error: %s", err)
+			callMeMaybe := "127.0.53.53"
+			writeIPAddressResponse(&callMeMaybe, m, question.Name, question.Qtype)
 			writeDNSResponse(w, m)
 			return
 		}
