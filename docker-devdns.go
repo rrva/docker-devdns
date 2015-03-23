@@ -84,20 +84,12 @@ func findContainerNameByIPAddress(n string) (*string, error) {
 }
 
 func findContainerIPAddressByName(n string) (*string, error) {
-	containers, err := docker.ListContainers(false, false, "")
+	info, err := docker.InspectContainer(n)
 	if err != nil {
 		return nil, err
 	}
-	for _, container := range containers {
-		if matches(container.Names, n) {
-			info, err := docker.InspectContainer(container.Id)
-			if err != nil {
-				return nil, err
-			}
-			if info != nil {
-				return &info.NetworkSettings.IpAddress, nil
-			}
-		}
+	if info != nil {
+		return &info.NetworkSettings.IpAddress, nil
 	}
 	return nil, nil
 }
@@ -112,7 +104,7 @@ func writeDNSResponse(w dns.ResponseWriter, m *dns.Msg) {
 func myselfAsResolverErrorResponse(w dns.ResponseWriter, m *dns.Msg, name string) {
 	log.Printf("Oh my! I'm pointing to myself!")
 	rr := new(dns.A)
-	rr.Hdr = dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1}
+	rr.Hdr = dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 5}
 	rr.A = net.ParseIP("0.0.0.0").To4()
 	m.Answer = append(m.Answer, rr)
 	writeDNSResponse(w, m)
@@ -162,7 +154,7 @@ func localLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 func writeNameResponse(m *dns.Msg, ip string, name *string) {
 	rr := new(dns.PTR)
 	str := *name + "." + domain + "."
-	rr.Hdr = dns.RR_Header{Name: ip, Rrtype: dns.TypePTR, Class: dns.ClassINET, Ttl: 1}
+	rr.Hdr = dns.RR_Header{Name: ip, Rrtype: dns.TypePTR, Class: dns.ClassINET, Ttl: 5}
 	rr.Ptr = str
 	m.Answer = append(m.Answer, rr)
 }
@@ -172,13 +164,13 @@ func writeIPAddressResponse(IPAddress *string, m *dns.Msg, name string, qtype ui
 	ip4 := ip.To4()
 	if ip4 != nil && qtype == dns.TypeA {
 		rr := new(dns.A)
-		rr.Hdr = dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1}
+		rr.Hdr = dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 5}
 
 		rr.A = ip4
 		m.Answer = append(m.Answer, rr)
 	} else if ip4 == nil && qtype == dns.TypeAAAA {
 		rr := new(dns.AAAA)
-		rr.Hdr = dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1}
+		rr.Hdr = dns.RR_Header{Name: name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 5}
 
 		rr.AAAA = ip.To16()
 		m.Answer = append(m.Answer, rr)
@@ -210,7 +202,7 @@ func reverseLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 
 		ip := inAddrArpaToIpAddress(question.Name)
 
-		name, err := lookupWithTimeout(ip, 1*time.Second, findContainerNameByIPAddress)
+		name, err := lookupWithTimeout(ip, 5*time.Second, findContainerNameByIPAddress)
 
 		if err != nil {
 			log.Printf("Container lookup error: %s", err)
@@ -237,11 +229,11 @@ func dockerNameLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 
 	for _, question := range req.Question {
 		rr := new(dns.A)
-		rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1}
+		rr.Hdr = dns.RR_Header{Name: question.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 5}
 
 		name := "/" + strings.TrimSuffix(question.Name, "."+domain+".")
 
-		IPAddress, err := lookupWithTimeout(name, 1*time.Second, findContainerIPAddressByName)
+		IPAddress, err := lookupWithTimeout(name, 5*time.Second, findContainerIPAddressByName)
 
 		if err != nil {
 			log.Printf("Container lookup error: %s", err)
