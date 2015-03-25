@@ -6,6 +6,7 @@ import (
 	"flag"
 	"github.com/miekg/dns"
 	"github.com/rrva/dockerclient"
+	"github.com/wunderlist/ttlcache"
 	"log"
 	"net"
 	"net/http"
@@ -43,6 +44,16 @@ type lookupFn func(string) (*string, error)
 
 func lookupWithTimeout(n string, t time.Duration, lookup lookupFn) (*string, error) {
 
+	value, exists := localLookupResponseCache.Get(n)
+	if exists {
+		return &value, nil
+	}
+
+	errStr, hasError := localLookupErrorsCache.Get(n)
+	if hasError {
+		return nil, errors.New(errStr)
+	}
+
 	lookupResponses := make(chan lookupResponse)
 	go func(n string) {
 		name, err := lookup(n)
@@ -58,7 +69,16 @@ func lookupWithTimeout(n string, t time.Duration, lookup lookupFn) (*string, err
 	for {
 		select {
 		case r := <-lookupResponses:
-			return r.response, r.err
+			{
+				if r.err != nil {
+					localLookupErrorsCache.Set(n, r.err.Error())
+				} else {
+					if r.response != nil {
+						localLookupResponseCache.Set(n, *(r.response))
+					}
+				}
+				return r.response, r.err
+			}
 		case <-timeouts:
 			return nil, errors.New("Timeout occurred talking to docker")
 		}
@@ -205,7 +225,7 @@ func reverseLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 		name, err := lookupWithTimeout(ip, 5*time.Second, findContainerNameByIPAddress)
 
 		if err != nil {
-			log.Printf("Container lookup error: %s", err)
+			log.Printf("Reverse container lookup error for %s: %s", question.Name, err)
 			m.SetRcode(req, dns.RcodeServerFailure)
 			writeDNSResponse(w, m)
 			return
@@ -236,7 +256,7 @@ func dockerNameLookupServer(w dns.ResponseWriter, req *dns.Msg) {
 		IPAddress, err := lookupWithTimeout(name, 5*time.Second, findContainerIPAddressByName)
 
 		if err != nil {
-			log.Printf("Container lookup error: %s", err)
+			log.Printf("Container lookup error for %s: %s", question.Name, err)
 			callMeMaybe := "127.0.53.53"
 			writeIPAddressResponse(&callMeMaybe, m, question.Name, question.Qtype)
 			writeDNSResponse(w, m)
@@ -282,9 +302,6 @@ func startDNS(addr string, errors chan error) {
 	}
 }
 
-var docker *dockerclient.DockerClient
-var domain string
-
 func newHTTPClient(host string, tlsConfig *tls.Config, timeout time.Duration) (*http.Client, *url.URL, error) {
 	u, err := url.Parse(host)
 	if err != nil {
@@ -316,9 +333,17 @@ func newHTTPClient(host string, tlsConfig *tls.Config, timeout time.Duration) (*
 	return &http.Client{Transport: httpTransport}, u, nil
 }
 
+var docker *dockerclient.DockerClient
+var domain string
+var localLookupResponseCache *ttlcache.Cache
+var localLookupErrorsCache *ttlcache.Cache
+
 func main() {
 
 	domain = *flag.String("domain", "dev", "domain")
+
+	localLookupResponseCache = ttlcache.NewCache(time.Second)
+	localLookupErrorsCache = ttlcache.NewCache(time.Second)
 
 	defaultDockerHost := os.Getenv("DOCKER_HOST")
 	if defaultDockerHost == "" {
