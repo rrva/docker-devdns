@@ -7,24 +7,27 @@ DNS server resolving .dev domain against docker container names
 Make docker containers discoverable via DNS for development environments,
 like when running a bunch of containers on your laptop.
 
-This does not use any etcd/zookeeper backend or registrator process but queries 
-the docker daemon directly, which hopefully makes it more robust.
+This does not use any etcd/zookeeper backend or registrator process
+but maintains it's own container name cache
 
-See etcd/skydns for a more complete solution. 
+See etcd/skydns for a more complete solution.
 
 Names, unlike skydock/progrium-registrator are short: it's $CONTAINER_NAME.dev.
 If a container name contains dots that will form subdomains.
 
 # Design
 
-Requests for a special toplevel domain (default .dev) tries to match any 
-running docker container with the same name by listing all running containers 
-on each request.
+Listens to container creation events and maintains a name<->ip cache.
+
+Requests for a special toplevel domain (default .dev) tries to match any
+running docker container with the same name.
+
+
 
 Requests for other domains are resolved by the operating system resolver,
-using gethostbyname() calls. This is so that we can cooperate with other
-special DNS server solutions installed in your development environment, 
-like VPN-assigned DNS-servers, vagrant landrush DNS servers etc.
+This is so that we can cooperate with other special DNS server solutions
+installed in your development environment, like VPN-assigned DNS-servers,
+vagrant landrush DNS servers etc.
 
 
 # Usage
@@ -39,18 +42,18 @@ For outside resolving, on OSX:
 create a file /etc/resolver/dev:
 
     nameserver <listen addr of docker-devdns>
-    
+
 outside resolving, other OS:
 
 use a dns server which can selectively forward
 requests for the .dev domain to this server. For example
 dnsmasq.
- 
-for container-to-container resolving, add the following to your docker 
+
+for container-to-container resolving, add the following to your docker
 daemon options:
 
     --dns <listen addr of docker-devdns> --dns-search dev
-    
+
 by default we listen to port 53, since this is the easiest
 to make containers use.
 
@@ -60,11 +63,11 @@ It will cause a resolver error since we try to look up any request for
 other names by gethostbyname() which creates a loop. We try to detect
 this misconfiguration on startup.
 
-If you only want .dev names to be resolvable, you can disable this 
+If you only want .dev names to be resolvable, you can disable this
 behavior by using
 
     -local-resolver=false
-   
+
 No upstream server can be configured (yet).
 
 
@@ -78,11 +81,9 @@ No upstream server can be configured (yet).
 
 # Performance
 
-Each DNS query in the .dev domain results in listing all running containers
-via the docker remote API and matching their names. No caching. With docker 
-host locally this is usually fast. Docker is given a deadline of 100ms to 
-respond to container list queries.
-    
+Listens to container creation events and maintains a local cache based
+on that
+
 # Limitations
 
 We only respond properly to A and AAAA queries.
