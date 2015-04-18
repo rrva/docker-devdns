@@ -254,23 +254,24 @@ func shutdownOnMonitorErrors(monitorErrors chan error) {
 }
 
 func main() {
-    domain := *flag.String("domain", "dev", "domain")
+    domain := flag.String("domain", "dev", "domain")
 
     defaultDockerHost := os.Getenv("DOCKER_HOST")
     if defaultDockerHost == "" {
         defaultDockerHost = "tcp://docker:2375"
     }
-    var dockerHost = *flag.String("docker-host", defaultDockerHost, "docker host url, or set DOCKER_HOST")
-    var listenAddr = *flag.String("listen-addr", ":53", "Listen address for DNS")
+    var dockerHost = flag.String("docker-host", defaultDockerHost, "docker host url, or set DOCKER_HOST")
+    var listenAddr = flag.String("listen-addr", ":5355", "Listen address for DNS")
     var otherLookupsToLocalResolver = *flag.Bool("local-resolver", true, "Perform local gethostbyname queries for other domains")
     flag.Parse()
 
+    log.Printf("Listen addr is %s", *listenAddr)
 
-    log.Printf("Resolving %s domain against docker container names at %s", domain, dockerHost)
+    log.Printf("Resolving %s domain against docker container names at %s", *domain, *dockerHost)
 
     var err error
 
-    docker, err = dockerclient.NewDockerClient(dockerHost, nil)
+    docker, err = dockerclient.NewDockerClient(*dockerHost, nil)
     if err != nil {
         log.Fatalf("Failed creating docker client: %s", err)
     }
@@ -279,7 +280,7 @@ func main() {
         log.Fatalf("Failed reading docker version: %s specify host with -docker-host", err)
     }
 
-    mymain(listenAddr, otherLookupsToLocalResolver, docker, domain, nil)
+    mymain(*listenAddr, otherLookupsToLocalResolver, docker, *domain, nil)
 }
 
 func mymain(listenAddr string, otherLookupsToLocalResolver bool, mydocker myDockerClient, mydomain string, started chan bool) {
